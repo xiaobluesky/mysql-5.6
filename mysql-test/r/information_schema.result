@@ -66,6 +66,7 @@ GLOBAL_STATUS
 GLOBAL_VARIABLES
 INDEX_STATISTICS
 KEY_COLUMN_USAGE
+NATIVE_PROCEDURES
 OPTIMIZER_TRACE
 PARAMETERS
 PARTITIONS
@@ -103,6 +104,7 @@ help_category
 help_keyword
 help_relation
 help_topic
+native_proc
 plugin
 proc
 procs_priv
@@ -838,6 +840,7 @@ information_schema	TRIGGERS	ACTION_CONDITION
 information_schema	TRIGGERS	ACTION_STATEMENT
 information_schema	VIEWS	VIEW_DEFINITION
 information_schema	AUTHINFO	INFO
+mysql	native_proc	lua
 select table_name, column_name, data_type from information_schema.columns
 where table_schema not like 'performance_schema'
   and data_type = 'datetime'
@@ -928,8 +931,8 @@ table_schema IN ('mysql', 'INFORMATION_SCHEMA', 'test', 'mysqltest')
 AND table_name not like 'ndb%' AND table_name not like 'innodb_%'  AND table_name not like 'rocksdb_%'
 GROUP BY TABLE_SCHEMA;
 table_schema	count(*)
-information_schema	41
-mysql	26
+information_schema	42
+mysql	27
 create table t1 (i int, j int);
 create trigger trg1 before insert on t1 for each row
 begin
@@ -1384,6 +1387,7 @@ GLOBAL_STATUS	information_schema.GLOBAL_STATUS	1
 GLOBAL_VARIABLES	information_schema.GLOBAL_VARIABLES	1
 INDEX_STATISTICS	information_schema.INDEX_STATISTICS	1
 KEY_COLUMN_USAGE	information_schema.KEY_COLUMN_USAGE	1
+NATIVE_PROCEDURES	information_schema.NATIVE_PROCEDURES	1
 OPTIMIZER_TRACE	information_schema.OPTIMIZER_TRACE	1
 PARAMETERS	information_schema.PARAMETERS	1
 PARTITIONS	information_schema.PARTITIONS	1

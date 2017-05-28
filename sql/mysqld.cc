@@ -77,6 +77,7 @@
 #include "sql_callback.h"
 #include "opt_trace_context.h"
 #include "sql_multi_tenancy.h"
+#include "native_procedure_priv.h"
 
 #include "global_threads.h"
 #include "mysqld.h"
@@ -2224,6 +2225,7 @@ void clean_up(bool print_message)
     udf_free();
 #endif
   }
+  native_procedure_destroy();
   table_def_start_shutdown();
   plugin_shutdown();
   ha_end();
@@ -4382,6 +4384,8 @@ SHOW_VAR com_status_vars[]= {
   {"create_table",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_TABLE]), SHOW_LONG_STATUS},
   {"create_trigger",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_TRIGGER]), SHOW_LONG_STATUS},
   {"create_udf",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_FUNCTION]), SHOW_LONG_STATUS},
+  {"create_native_proc",   (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_NPROCEDURE]), SHOW_LONG_STATUS},
+  {"drop_native_proc",     (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_NPROCEDURE]), SHOW_LONG_STATUS},
   {"create_user",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_USER]), SHOW_LONG_STATUS},
   {"create_view",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_VIEW]), SHOW_LONG_STATUS},
   {"dealloc_sql",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DEALLOCATE_PREPARE]), SHOW_LONG_STATUS},
@@ -5195,7 +5199,7 @@ static int init_thread_environment()
   mysql_mutex_init(key_LOCK_log_throttle_legacy,
                    &LOCK_log_throttle_legacy, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_global_table_stats,
-                   &LOCK_global_table_stats, MY_MUTEX_INIT_FAST);
+                   &LOCK_global_table_stats, MY_MUTEX_INIT_ERRCHK);
 #ifdef HAVE_OPENSSL
   mysql_mutex_init(key_LOCK_des_key_file,
                    &LOCK_des_key_file, MY_MUTEX_INIT_FAST);
@@ -7260,6 +7264,7 @@ int mysqld_main(int argc, char **argv)
     udf_init();
 #endif
   }
+  native_procedure_init();
 
   init_status_vars();
   /* If running with bootstrap, do not start replication. */
@@ -9898,6 +9903,10 @@ end:
 
 #endif
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#define X509_get0_notBefore(x) X509_get_notBefore(x)
+#define X509_get0_notAfter(x) X509_get_notAfter(x)
+#endif
 
 /**
   Handler function for the 'ssl_get_server_not_before' variable
@@ -9918,7 +9927,7 @@ show_ssl_get_server_not_before(THD *thd, SHOW_VAR *var, char *buff)
   {
     SSL *ssl= (SSL*) thd->net.vio->ssl_arg;
     X509 *cert= SSL_get_certificate(ssl);
-    ASN1_TIME *not_before= X509_get_notBefore(cert);
+    ASN1_TIME *not_before= (ASN1_TIME *)X509_get0_notBefore(cert);
 
     var->value= my_asn1_time_to_string(not_before, buff,
                                        SHOW_VAR_FUNC_BUFF_SIZE);
@@ -9951,7 +9960,7 @@ show_ssl_get_server_not_after(THD *thd, SHOW_VAR *var, char *buff)
   {
     SSL *ssl= (SSL*) thd->net.vio->ssl_arg;
     X509 *cert= SSL_get_certificate(ssl);
-    ASN1_TIME *not_after= X509_get_notAfter(cert);
+    ASN1_TIME *not_after= (ASN1_TIME *)X509_get0_notAfter(cert);
 
     var->value= my_asn1_time_to_string(not_after, buff,
                                        SHOW_VAR_FUNC_BUFF_SIZE);

@@ -822,7 +822,7 @@ static MYSQL_SYSVAR_INT(max_background_compactions,
                         "DBOptions::max_background_compactions for RocksDB",
                         nullptr, rocksdb_set_max_background_compactions,
                         rocksdb_db_options->max_background_compactions,
-                        /* min */ 1, /* max */ MAX_BACKGROUND_COMPACTIONS, 0);
+                        /* min */ -1, /* max */ MAX_BACKGROUND_COMPACTIONS, 0);
 
 static MYSQL_SYSVAR_INT(max_background_flushes,
                         rocksdb_db_options->max_background_flushes,
@@ -830,7 +830,7 @@ static MYSQL_SYSVAR_INT(max_background_flushes,
                         "DBOptions::max_background_flushes for RocksDB",
                         nullptr, nullptr,
                         rocksdb_db_options->max_background_flushes,
-                        /* min */ 1, /* max */ MAX_BACKGROUND_FLUSHES, 0);
+                        /* min */ -1, /* max */ MAX_BACKGROUND_FLUSHES, 0);
 
 static MYSQL_SYSVAR_UINT(max_subcompactions,
                          rocksdb_db_options->max_subcompactions,
@@ -1580,6 +1580,12 @@ public:
   String m_detailed_error;
   int64_t m_snapshot_timestamp = 0;
   bool m_ddl_transaction;
+
+  /*
+    Tracks the number of tables in use through external_lock.
+    This should not be reset during start_tx().
+  */
+  int64_t m_n_mysql_tables_in_use = 0;
 
   /*
     for distinction between rdb_transaction_impl and rdb_writebatch_impl
@@ -4427,7 +4433,9 @@ void ha_rocksdb::setup_read_decoders() {
       continue;
     }
 
+    // bitmap is cleared on index merge, but it still needs to decode columns
     if (m_lock_rows == RDB_LOCK_WRITE || m_verify_row_debug_checksums ||
+        bitmap_is_clear_all(table->read_set) ||
         bitmap_is_set(table->read_set, table->field[i]->field_index)) {
       // We will need to decode this field
       m_decoders_vect.push_back({&m_encoder_arr[i], true, skip_size});
@@ -8901,7 +8909,9 @@ int ha_rocksdb::external_lock(THD *const thd, int lock_type) {
     Rdb_transaction *const tx = get_or_create_tx(thd);
 
     tx->io_perf_end_and_record(&m_io_perf);
-    if (!my_core::thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) {
+    tx->m_n_mysql_tables_in_use--;
+    if (tx->m_n_mysql_tables_in_use == 0 &&
+        !my_core::thd_test_options(thd, OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN)) {
       /*
         Do like InnoDB: when we get here, it's time to commit a
         single-statement transaction.
@@ -8963,6 +8973,7 @@ int ha_rocksdb::external_lock(THD *const thd, int lock_type) {
         tx->m_ddl_transaction = true;
       }
     }
+    tx->m_n_mysql_tables_in_use++;
     rocksdb_register_tx(rocksdb_hton, thd, tx);
     tx->io_perf_start(&m_io_perf);
   }
